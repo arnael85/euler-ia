@@ -1,1 +1,116 @@
+"""
+Nome da Aplicação: Euler.IA - Professor Particular de Matemática Avançada
+Criado por: Arnael Guilherme da Silva Porto
+Descrição: Aplicação web inteligente com suporte multimodal (leitura de fotos de listas de exercícios)
+para traduzir conceitos complexos de matemática em explicações visuais, intuitivas e passo a passo.
+"""
 
+import streamlit as st
+from google import genai
+import os
+from PIL import Image
+
+# Configuração da Página do Aplicativo
+st.set_page_config(
+    page_title="Euler.IA - Matemática Intuitiva",
+    page_icon="📐",
+    layout="centered"
+)
+
+# Identidade visual e autoria protegida
+CREATOR_NAME = "Arnael Guilherme da Silva Porto"
+
+st.title("📐 Euler.IA")
+st.markdown("*Sua mentoria inteligente para descomplicar a matemática avançada.*")
+st.sidebar.markdown(f"### Sobre o Projeto")
+st.sidebar.info(
+    "O **Euler.IA** transforma equações densas, cálculos abstratos e fotos "
+    "de exercícios em analogias visuais e intuitivas passo a passo."
+)
+st.sidebar.caption(f"Criado e Desenvolvido por:\n**{CREATOR_NAME}**")
+
+# Chave da API
+api_key = st.secrets.get("GEMINI_API_KEY") or os.getenv("GEMINI_API_KEY")
+
+if not api_key:
+    st.sidebar.warning("⚠️ Chave de API não detectada.")
+    api_key = st.sidebar.text_input("Insira sua Gemini API Key:", type="password")
+
+if api_key:
+    client = genai.Client(api_key=api_key)
+    
+    # Inicializar histórico de mensagens
+    if "messages" not in st.session_state:
+        st.session_state.messages = [
+            {
+                "role": "model", 
+                "parts": [{
+                    "text": "Olá! Sou o Euler.IA, criado por Arnael Guilherme da Silva Porto. "
+                            "Você pode digitar sua dúvida ou enviar uma foto da sua lista de exercícios "
+                            "de matemática avançada para resolvermos juntos passo a passo!"
+                }]
+            }
+        ]
+
+    # Renderizar histórico do chat
+    for message in st.session_state.messages:
+        with st.chat_message(message["role"]):
+            for part in message.get("parts", []):
+                if isinstance(part, dict) and "text" in part:
+                    st.markdown(part["text"])
+
+    # Widget para upload de imagem na interface
+    uploaded_image = st.file_uploader(
+        "📷 Envie a foto da questão ou lista de exercícios (PNG, JPG, JPEG):", 
+        type=["png", "jpg", "jpeg"]
+    )
+
+    # Exibir miniatura da imagem enviada se houver
+    pil_img = None
+    if uploaded_image is not None:
+        pil_img = Image.open(uploaded_image)
+        st.image(pil_img, caption="Exercício enviado para análise", width=350)
+
+    # Capturar comando ou pergunta do usuário
+    if prompt := st.chat_input("Digite sua dúvida ou peça para resolver a imagem enviada..."):
+        # Registrar mensagem do usuário no histórico visual
+        st.session_state.messages.append({"role": "user", "parts": [{"text": prompt}]})
+        with st.chat_message("user"):
+            st.markdown(prompt)
+            if pil_img:
+                st.image(pil_img, caption="Questão enviada", width=300)
+
+        with st.chat_message("model"):
+            with st.spinner("Analisando o problema e construindo a intuição passo a passo..."):
+                try:
+                    # Persona pedagógica estrita com autoria explícita
+                    system_instruction = (
+                        "Você é o Euler.IA, um professor de matemática brilhante criado por Arnael Guilherme da Silva Porto. "
+                        "Sua missão é explicar matemática avançada e resolver exercícios de forma extremamente simples, intuitiva e visual. "
+                        "1. Se o aluno enviou uma imagem, analise cada detalhe do enunciado e dos dados apresentados nela. "
+                        "2. Sempre comece explicando a intuição física ou geométrica do conceito antes de jogar fórmulas. "
+                        "3. Divida a resolução e as explicações em micro-passos lógicos e claros. "
+                        "4. Nunca use jargões sem explicá-los de forma lúdica."
+                    )
+                    
+                    # Montagem do payload multimodal para o modelo Gemini 2.5 Flash
+                    contents_payload = [
+                        f"Instrução do Sistema: {system_instruction}\n\nSolicitação do Aluno: {prompt}"
+                    ]
+                    
+                    if pil_img:
+                        contents_payload.append(pil_img)
+
+                    # Chamada à API multimodal
+                    response = client.models.generate_content(
+                        model='gemini-2.5-flash',
+                        contents=contents_payload
+                    )
+                    
+                    answer = response.text
+                    st.markdown(answer)
+                    st.session_state.messages.append({"role": "model", "parts": [{"text": answer}]})
+                except Exception as e:
+                    st.error(f"Ocorreu um erro ao processar a resposta: {e}")
+else:
+    st.warning("Por favor, insira uma chave de API válida do Gemini para iniciar a inteligência artificial.")
